@@ -15,6 +15,7 @@ h1{font-size:20px;margin:0}
 #upd{font-size:15px;opacity:.9}
 #banner{display:none;background:#b00020;color:#fff;font-weight:700;padding:10px 14px}
 #banner.on{display:block}
+#banner.info{background:#14213d}
 main{padding:0 0 24px}
 h2{font-size:18px;margin:18px 14px 6px;color:#14213d}
 ul{list-style:none;margin:0;padding:0;background:#fff;border-top:1px solid #dcdfe4;border-bottom:1px solid #dcdfe4}
@@ -54,9 +55,16 @@ var QTFEED="mk-waits.json",QT_STALE=20*60000,qt=null,qtTs=0,src="";
 var FEED="https://api.themeparks.wiki/v1/entity/75ea578a-adc8-4116-a54d-dccb60765ef9/live";
 // local testing only: ?feed=<url> is honored on localhost
 if(/^(localhost|127\.0\.0\.1)$/.test(location.hostname)){var m=/[?&]feed=([^&]+)/.exec(location.search);if(m)FEED=decodeURIComponent(m[1]);}
+var PARTY=["2026-10-23","2026-10-25","2026-10-27","2026-10-29","2026-10-31"];
+var PWMSG="Disney doesn’t post waits 6–7 PM on party nights; rides are open; times return at 7";
 var last=null,lastOk=0,feedTs=0,anyOpen=false,busy=false,known={};
 var app=document.getElementById("app"),upd=document.getElementById("upd"),ban=document.getElementById("banner");
 var tf=new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",hour:"numeric",minute:"2-digit"});
+var df=new Intl.DateTimeFormat("en-CA",{timeZone:"America/New_York",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",hourCycle:"h23"});
+function pwin(){
+  var p={};df.formatToParts(new Date()).forEach(function(x){p[x.type]=x.value});
+  return PARTY.indexOf(p.year+"-"+p.month+"-"+p.day)>=0&&+p.hour===18;
+}
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function nk(s){return String(s).toLowerCase().replace(/[^a-z0-9]/g,"")}
 var HBN={};MAP.forEach(function(L){L.items.forEach(function(it){HBN[nk(it[1])]=it[2]})});
@@ -68,7 +76,7 @@ function stale(){
   if(anyOpen&&feedTs&&now-feedTs>FEED_STALE)return true;
   return false;
 }
-function chip(e,st){
+function chip(e,st,pw){
   if(st)return['x','—'];
   if(!e)return['x','No data'];
   var s=e.status;
@@ -79,7 +87,7 @@ function chip(e,st){
   }
   if(s==="DOWN")return['d','Down'];
   if(s==="REFURBISHMENT")return['x','Refurb'];
-  if(s==="CLOSED")return['x','Closed'];
+  if(s==="CLOSED")return['x',pw?'No wait':'Closed'];
   return['x',esc(s||"No data")];
 }
 function ht(h,ride){
@@ -88,45 +96,45 @@ function ht(h,ride){
   if(h>KAI)return["Kai 42 in.: too short (min "+h+" in.)","no"];
   return[h>0?"Min "+h+" in.":"","" ];
 }
-function row(id,name,h,st){
-  var e=last&&last[id],c=chip(e,st),t=ht(h);
+function row(id,name,h,st,pw){
+  var e=last&&last[id],c=chip(e,st,pw),t=ht(h);
   var cls=t[1]==="no"?' class="no"':'';
   return'<li'+cls+'><div class="n"><div class="nm">'+esc(name)+'</div>'+(t[0]?'<div class="ht '+t[1]+'">'+esc(t[0])+'</div>':'')+'</div><div class="c '+c[0]+'">'+c[1]+'</div></li>';
 }
-function qrow(r,st){
+function qrow(r,st,pw){
   var h=HBN[nk(r.name)],t=ht(h===undefined?null:h),c;
   if(st)c=['x','—'];
   else if(r.open)c=[r.wait<=20?"w1":r.wait<=45?"w2":"w3",(typeof r.wait==="number"?r.wait:0)+" min"];
-  else c=r.status==="Down"?['d','Down']:['x',r.status||'Closed'];
+  else c=r.status==="Down"?['d','Down']:['x',pw&&r.status!=="Refurb"?'No wait':(r.status||'Closed')];
   var cls=t[1]==="no"?' class="no"':'';
   return'<li'+cls+'><div class="n"><div class="nm">'+esc(r.name)+'</div>'+(t[0]?'<div class="ht '+t[1]+'">'+esc(t[0])+'</div>':'')+'</div><div class="c '+c[0]+'">'+esc(c[1])+'</div></li>';
 }
 function renderQT(){
-  var st=stale(),html="";
+  var st=stale(),pw=!st&&pwin(),html="";
   qt.lands.forEach(function(L){
     html+='<h2>'+esc(L.name)+'</h2><ul>';
-    L.rides.forEach(function(r){html+=qrow(r,st)});
+    L.rides.forEach(function(r){html+=qrow(r,st,pw)});
     html+='</ul>';
   });
   app.innerHTML=html;
   upd.textContent="Updated "+tf.format(new Date(qtTs))+" ET · Queue-Times";
   var nopen=0;qt.lands.forEach(function(L){L.rides.forEach(function(r){if(r.open)nopen++})});
-  ban.textContent=st?"Times are out of date (last good update "+tf.format(new Date(qtTs))+" ET). Numbers hidden until the feed recovers.":(nopen<3?"The feed reports nearly everything closed. If rides are running, the feed is wrong; check the My Disney Experience app.":"");
-  ban.className=ban.textContent?"on":"";
+  ban.textContent=st?"Times are out of date (last good update "+tf.format(new Date(qtTs))+" ET). Numbers hidden until the feed recovers.":pw?PWMSG:(nopen<3?"The feed reports nearly everything closed. If rides are running, the feed is wrong; check the My Disney Experience app.":"");
+  ban.className=ban.textContent?(pw?"on info":"on"):"";
 }
 function render(){
   if(src==="qt"&&qt)return renderQT();
-  var st=stale(),html="",seen={};
+  var st=stale(),pw=!st&&pwin(),html="",seen={};
   MAP.forEach(function(L){
     html+='<h2>'+esc(L.land)+'</h2><ul>';
-    L.items.forEach(function(it){seen[it[0]]=1;html+=row(it[0],it[1],it[2],st)});
+    L.items.forEach(function(it){seen[it[0]]=1;html+=row(it[0],it[1],it[2],st,pw)});
     html+='</ul>';
   });
   var other=[];
   if(last)Object.keys(last).forEach(function(id){var e=last[id];if(!seen[id]&&(e.entityType==="ATTRACTION"||(e.queue&&e.queue.STANDBY)))other.push(e)});
   if(other.length){
     html+='<h2>Other</h2><ul>';
-    other.forEach(function(e){html+=row(e.id,e.name,null,st)});
+    other.forEach(function(e){html+=row(e.id,e.name,null,st,pw)});
     html+='</ul>';
   }
   app.innerHTML=html;
@@ -134,8 +142,8 @@ function render(){
   if(lastOk)upd.textContent="Updated "+tf.format(new Date(lastOk))+" ET · backup source ThemeParks.wiki";
   if(st&&!last)ban.textContent="Times unavailable. Check back shortly.";
   else if(st)ban.textContent="Times are out of date (last good update "+tf.format(new Date(lastOk))+" ET). Numbers hidden until the feed recovers.";
-  if(!st)ban.textContent="Backup source in use (main feed unavailable). It can show open rides as Closed.";
-  ban.className=(st||last)?"on":"";
+  if(!st)ban.textContent=pw?PWMSG:"Backup source in use (main feed unavailable). It can show open rides as Closed.";
+  ban.className=(st||last)?(pw?"on info":"on"):"";
   if(st&&!lastOk)upd.textContent="No update yet";
 }
 function poll(){
